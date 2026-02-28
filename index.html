@@ -1,0 +1,1007 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Low Balance Alert Agent</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #faf9f6;
+    --surface: #ffffff;
+    --surface2: #f0ede8;
+    --border: #e8e4dc;
+    --border2: #d4cfc5;
+    --accent: #1a1a2e;
+    --accent2: #4f46e5;
+    --warn: #d97706;
+    --text: #1a1a2e;
+    --muted: #8b8580;
+    --green: #059669;
+    --red: #dc2626;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none; z-index: 0;
+  }
+
+  /* Top bar */
+  .topbar {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(250,249,246,0.95);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 32px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+
+  .logo { display: flex; align-items: center; gap: 12px; }
+  .logo-icon {
+    width: 34px; height: 34px;
+    background: var(--accent);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center; font-size: 16px;
+  }
+  .logo-text { font-family: 'Instrument Serif', serif; font-size: 17px; font-weight: 700; color: var(--text); }
+
+  .security-badge {
+    display: flex; align-items: center; gap: 6px;
+    background: #ecfdf5; border: 1px solid #a7f3d0;
+    border-radius: 100px; padding: 5px 12px;
+    font-size: 11px; color: var(--green); font-weight: 500; letter-spacing: 0.04em;
+  }
+  .security-badge::before { content: '🔒'; font-size: 11px; }
+
+  /* Layout */
+  .page {
+    max-width: 860px; margin: 0 auto;
+    padding: 48px 24px 80px;
+    position: relative; z-index: 1;
+  }
+
+  /* Hero */
+  .hero { text-align: center; margin-bottom: 48px; }
+  .hero-tag {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: #f0ede8; border: 1px solid var(--border2);
+    border-radius: 100px; padding: 5px 14px;
+    font-size: 11px; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase;
+    margin-bottom: 20px;
+  }
+  .hero-tag span { width: 5px; height: 5px; background: var(--accent2); border-radius: 50%; animation: pulse 2s infinite; }
+  h1 {
+    font-family: 'Instrument Serif', serif;
+    font-size: clamp(28px, 4vw, 42px);
+    font-weight: 800; line-height: 1.1;
+    letter-spacing: -0.02em; margin-bottom: 12px;
+  }
+  h1 em { font-style: normal; color: var(--accent); }
+  .hero-sub { color: var(--muted); font-size: 15px; line-height: 1.6; max-width: 480px; margin: 0 auto; }
+
+  /* Steps indicator */
+  .steps-bar {
+    display: flex; align-items: center; gap: 0;
+    margin-bottom: 40px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 14px;
+    overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+  }
+  .step-item {
+    flex: 1; padding: 14px 16px; text-align: center;
+    font-size: 12px; font-weight: 600; letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--muted);
+    border-right: 1px solid var(--border); cursor: pointer;
+    transition: all 0.2s; position: relative;
+  }
+  .step-item:last-child { border-right: none; }
+  .step-item.active { color: var(--accent2); background: #f5f3ff; }
+  .step-item.done { color: var(--green); background: #f0fdf4; }
+  .step-item .step-num {
+    display: block; font-family: 'Instrument Serif', serif;
+    font-size: 18px; font-weight: 800; margin-bottom: 2px;
+  }
+
+  /* Sections */
+  .section { display: none; animation: fadeUp 0.4s ease both; }
+  .section.active { display: block; }
+
+  /* Service grid */
+  .service-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+    margin-bottom: 24px;
+  }
+  @media (max-width: 500px) { .service-grid { grid-template-columns: repeat(2, 1fr); } }
+
+  .service-card {
+    background: var(--surface); border: 2px solid var(--border);
+    border-radius: 14px; padding: 20px 16px; text-align: center;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .service-card:hover { border-color: var(--accent2); background: #f5f3ff; }
+  .service-card.selected { border-color: var(--accent2); background: #f5f3ff; }
+  .service-card .svc-icon { font-size: 28px; margin-bottom: 8px; display: block; }
+  .service-card .svc-name { font-family: 'Instrument Serif', serif; font-size: 14px; font-weight: 700; }
+  .service-card .svc-desc { font-size: 11px; color: var(--muted); margin-top: 3px; }
+
+  /* Form */
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 540px) { .form-grid { grid-template-columns: 1fr; } }
+
+  .field { margin-bottom: 0; }
+  .field.full { grid-column: 1 / -1; }
+
+  label {
+    display: block; font-size: 11px; font-weight: 600;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 8px;
+  }
+
+  input, select {
+    width: 100%; background: var(--surface2);
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 16px; color: var(--text);
+    font-family: 'DM Sans', sans-serif; font-size: 14px;
+    outline: none; transition: border-color 0.2s, box-shadow 0.2s;
+    appearance: none;
+  }
+  input:focus, select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(110,231,183,0.08);
+  }
+  input::placeholder { color: var(--muted); }
+
+  select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2364748b' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 14px center;
+    padding-right: 36px; cursor: pointer;
+  }
+
+  select option { background: var(--surface2); }
+
+  .field-hint { font-size: 11px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+
+  /* Info box */
+  .info-box {
+    background: #f0fdf4; border: 1px solid #bbf7d0;
+    border-radius: 12px; padding: 16px 18px; margin-bottom: 20px;
+    font-size: 13px; line-height: 1.6; color: #166534;
+  }
+  .info-box strong { color: #166534; }
+  .info-box a { color: var(--accent2); text-decoration: none; }
+
+  /* Credential fields */
+  .cred-section {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 24px; margin-bottom: 20px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+  }
+  .cred-title {
+    font-family: 'Instrument Serif', serif; font-size: 13px; font-weight: 700;
+    color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em;
+    margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+  }
+
+  /* Frequency selector */
+  .freq-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  @media (max-width: 480px) { .freq-grid { grid-template-columns: repeat(2, 1fr); } }
+  .freq-opt {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 8px; text-align: center;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .freq-opt:hover, .freq-opt.selected {
+    border-color: var(--accent2); background: #f5f3ff; color: var(--accent2);
+  }
+  .freq-opt .fn { font-family: 'Instrument Serif', serif; font-size: 22px; font-weight: 800; display: block; }
+  .freq-opt .fu { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  .freq-opt.selected .fu { color: var(--accent2); }
+
+  /* Nav buttons */
+  .nav-row { display: flex; gap: 12px; margin-top: 28px; }
+  .btn-back {
+    padding: 13px 24px; background: var(--surface);
+    border: 1px solid var(--border2); border-radius: 12px;
+    color: var(--muted); font-family: 'DM Sans', sans-serif;
+    font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s;
+  }
+  .btn-back:hover { border-color: var(--text); color: var(--text); }
+  .btn-next {
+    flex: 1; padding: 13px 24px;
+    background: #ec4899;
+    border: none; border-radius: 12px; color: white;
+    font-family: 'DM Sans', sans-serif; font-size: 15px; font-weight: 700;
+    cursor: pointer; transition: all 0.2s; letter-spacing: 0.02em;
+  }
+  .btn-next:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(236,72,153,0.3); background: #db2777; }
+  .btn-next:active { transform: translateY(0); }
+
+  /* Output */
+  .output-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; overflow: hidden; margin-bottom: 20px;
+  }
+  .output-tabs { display: flex; border-bottom: 1px solid var(--border); background: var(--surface2); overflow-x: auto; border-radius: 0; }
+  .otab {
+    padding: 12px 18px; font-size: 12px; font-family: 'DM Mono', monospace;
+    cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent;
+    transition: all 0.2s; white-space: nowrap; font-weight: 500;
+  }
+  .otab.active { color: var(--accent2); border-bottom-color: var(--accent2); background: var(--surface); }
+  .otab-content { display: none; padding: 20px; }
+  .otab-content.active { display: block; }
+
+  .code-block {
+    background: #0f0f1a; border-radius: 10px; padding: 18px;
+    font-family: 'DM Mono', monospace; font-size: 12px; line-height: 1.75;
+    color: #c8d3f5; overflow-x: auto; max-height: 300px; overflow-y: auto;
+    white-space: pre;
+  }
+
+  .copy-row { display: flex; justify-content: flex-end; margin-top: 10px; }
+  .copy-btn {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 7px 16px; font-size: 12px;
+    cursor: pointer; font-family: 'DM Sans', sans-serif;
+    color: var(--text); transition: all 0.2s; font-weight: 500;
+  }
+  .copy-btn:hover { background: var(--accent2); color: white; border-color: var(--accent2); }
+  .copy-btn.copied { background: var(--green); color: white; border-color: var(--green); }
+
+  /* Summary */
+  .summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+  @media (max-width: 480px) { .summary-grid { grid-template-columns: 1fr; } }
+  .summary-item {
+    background: #f5f3ff; border: 1px solid #ddd6fe;
+    border-radius: 10px; padding: 12px 16px;
+  }
+  .summary-item .si-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px; }
+  .summary-item .si-value { font-family: 'DM Sans', sans-serif; font-weight: 600; font-size: 15px; font-weight: 700; color: var(--text); }
+
+  /* Deploy steps */
+  .deploy-steps { display: flex; flex-direction: column; gap: 14px; }
+  .ds { display: flex; gap: 14px; align-items: flex-start; }
+  .ds-num {
+    width: 28px; height: 28px; background: var(--accent); color: white;
+    border-radius: 8px; display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; flex-shrink: 0; margin-top: 1px;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .ds-text { font-size: 13px; line-height: 1.65; color: var(--text); padding-top: 4px; }
+  .ds-text strong { color: var(--accent); }
+  .ds-text code {
+    background: rgba(79,70,229,0.08); color: var(--accent2);
+    padding: 1px 6px; border-radius: 4px;
+    font-family: 'DM Mono', monospace; font-size: 11px;
+  }
+
+  /* Success banner */
+  .success-banner {
+    background: #f0fdf4; border: 1px solid #bbf7d0;
+    border-radius: 14px; padding: 20px 24px; margin-bottom: 24px;
+    display: flex; gap: 14px; align-items: center;
+  }
+  .success-icon { font-size: 32px; flex-shrink: 0; }
+  .success-text h3 { font-family: 'Instrument Serif', serif; font-size: 16px; font-weight: 700; color: var(--green); margin-bottom: 4px; }
+  .success-text p { font-size: 13px; color: var(--muted); line-height: 1.5; }
+
+  /* Security note */
+  .sec-note {
+    background: #fffbeb; border: 1px solid #fde68a;
+    border-radius: 10px; padding: 12px 16px; font-size: 12px;
+    color: #92400e; line-height: 1.6; margin-bottom: 20px;
+    display: flex; gap: 8px; align-items: flex-start;
+  }
+
+  .guide-link { color: #ec4899; font-size: 12px; font-weight: 600; text-decoration: none; }
+  .guide-link:hover { text-decoration: underline; }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">
+    <div class="logo-icon">🔔</div>
+    <span class="logo-text">Low Balance Alert Agent</span>
+  </div>
+  <div class="security-badge">Credentials never stored</div>
+</div>
+
+<div class="page">
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="hero-tag"><span></span>Internal Tool</div>
+    <h1>Set up your Slack alert<br>in <em>3 simple steps.</em></h1>
+    <p class="hero-sub">Pick your service, fill in a few details, and get ready-to-deploy files instantly. No coding needed.</p>
+  </div>
+
+  <!-- Steps bar -->
+  <div class="steps-bar">
+    <div class="step-item active" id="stab1" onclick="goToStep(1)">
+      <span class="step-num">1</span>Service
+    </div>
+    <div class="step-item" id="stab2">
+      <span class="step-num">2</span>Settings
+    </div>
+    <div class="step-item" id="stab3">
+      <span class="step-num">3</span>Generate
+    </div>
+  </div>
+
+  <!-- Step 1: Service selection -->
+  <div class="section active" id="step1">
+    <div class="service-grid">
+      <div class="service-card" onclick="selectService('exotel')">
+        <span class="svc-icon">📞</span>
+        <div class="svc-name">Exotel</div>
+        <div class="svc-desc">In-app calls & SMS</div>
+      </div>
+      <div class="service-card" onclick="selectService('twilio')">
+        <span class="svc-icon">💬</span>
+        <div class="svc-name">Twilio</div>
+        <div class="svc-desc">SMS & Voice API</div>
+      </div>
+      <div class="service-card" onclick="selectService('razorpay')">
+        <span class="svc-icon">💳</span>
+        <div class="svc-name">Razorpay</div>
+        <div class="svc-desc">Payments</div>
+      </div>
+      <div class="service-card" onclick="selectService('sendgrid')">
+        <span class="svc-icon">📧</span>
+        <div class="svc-name">SendGrid</div>
+        <div class="svc-desc">Email API</div>
+      </div>
+      <div class="service-card" onclick="selectService('aws')">
+        <span class="svc-icon">☁️</span>
+        <div class="svc-name">AWS</div>
+        <div class="svc-desc">Cloud credits</div>
+      </div>
+      <div class="service-card" onclick="selectService('custom')">
+        <span class="svc-icon">🔧</span>
+        <div class="svc-name">Custom</div>
+        <div class="svc-desc">Any other service</div>
+      </div>
+    </div>
+    <div class="nav-row">
+      <button class="btn-next" onclick="nextStep(1)">Continue →</button>
+    </div>
+  </div>
+
+  <!-- Step 2: Settings -->
+  <div class="section" id="step2">
+    <div id="credGuide" class="info-box" style="margin-bottom:20px;"></div>
+
+    <div class="cred-section">
+      <div class="cred-title">🔑 Your Credentials</div>
+      <div class="sec-note">
+        <span>⚠️</span>
+        <span>These are used only to generate your config files. Nothing is stored or sent anywhere — everything stays in your browser.</span>
+      </div>
+      <div class="form-grid" id="credFields"></div>
+    </div>
+
+    <div id="apiUrlSection"></div>
+
+    <div class="cred-section">
+      <div class="cred-title">⚙️ Alert Settings</div>
+      <div class="form-grid">
+        <div class="field">
+          <label>Alert Threshold</label>
+          <input type="number" id="threshold" placeholder="1000" value="1000" />
+          <div class="field-hint">Send Slack alert when balance drops below this</div>
+        </div>
+        <div class="field">
+          <label>Recharge Amount</label>
+          <input type="number" id="rechargeAmt" placeholder="5000" />
+          <div class="field-hint">How much you usually top up — shown in the alert</div>
+        </div>
+        <div class="field full">
+          <label>Slack Webhook URL</label>
+          <input type="text" id="slackWebhook" placeholder="https://hooks.slack.com/services/..." />
+          <div class="field-hint">Get this from api.slack.com/apps → Incoming Webhooks → Add New Webhook</div>
+        </div>
+        <div class="field full">
+          <label>Check Frequency</label>
+          <div class="freq-grid" style="margin-top:4px;">
+            <div class="freq-opt selected" onclick="setFreq(this,1)"><span class="fn">1</span><span class="fu">Hour</span></div>
+            <div class="freq-opt" onclick="setFreq(this,4)"><span class="fn">4</span><span class="fu">Hours</span></div>
+            <div class="freq-opt" onclick="setFreq(this,8)"><span class="fn">8</span><span class="fu">Hours</span></div>
+            <div class="freq-opt" onclick="setFreq(this,24)"><span class="fn">24</span><span class="fu">Hours</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="nav-row">
+      <button class="btn-back" onclick="goToStep(1)">← Back</button>
+      <button class="btn-next" onclick="nextStep(2)">Generate My Alert →</button>
+    </div>
+  </div>
+
+  <!-- Step 3: Output -->
+  <div class="section" id="step3">
+    <div class="success-banner">
+      <div class="success-icon">✅</div>
+      <div class="success-text">
+        <h3>Your alert setup is ready!</h3>
+        <p>Copy both files and follow the deploy steps. You'll be live in under 5 minutes.</p>
+      </div>
+    </div>
+
+    <div class="summary-grid" id="summaryGrid"></div>
+
+    <div class="output-card">
+      <div class="output-tabs">
+        <div class="otab active" onclick="switchTab(this,'tpy')">📄 check_balance.py</div>
+        <div class="otab" onclick="switchTab(this,'tyml')">⚙️ workflow.yml</div>
+        <div class="otab" onclick="switchTab(this,'tdep')">🚀 Deploy Steps</div>
+      </div>
+      <div id="tpy" class="otab-content active">
+        <div class="code-block" id="pyOut"></div>
+        <div class="copy-row"><button class="copy-btn" onclick="copyBlock('pyOut',this)">Copy file</button></div>
+      </div>
+      <div id="tyml" class="otab-content">
+        <div class="code-block" id="ymlOut"></div>
+        <div class="copy-row"><button class="copy-btn" onclick="copyBlock('ymlOut',this)">Copy file</button></div>
+      </div>
+      <div id="tdep" class="otab-content">
+        <div class="deploy-steps" id="deploySteps"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── Service configs ───────────────────────────────────────────────────────
+const SERVICES = {
+  exotel: {
+    name: 'Exotel', currency: '₹',
+    apiUrl: 'https://api.exotel.com/v1/Accounts/{EXOTEL_SID}/balance.json',
+    jsonPath: 'Balance.AvailableBalance', authType: 'basic',
+    wfName: 'exotel-monitor',
+    creds: [
+      { id: 'sid',   label: 'Account SID',  envName: 'EXOTEL_SID',       placeholder: 'wiom67' },
+      { id: 'key',   label: 'API Key',       envName: 'EXOTEL_API_KEY',   placeholder: 'Your API Key' },
+      { id: 'token', label: 'API Token',     envName: 'EXOTEL_API_TOKEN', placeholder: 'Your API Token' },
+    ],
+    guide: '🔑 Find these at <strong>my.exotel.com → Settings → API</strong>. You\'ll see Account SID, API Key, and API Token on that page.',
+    guideSteps: [
+      'Open your browser and go to <a href="https://my.exotel.com" target="_blank"><strong>my.exotel.com</strong></a> and log in',
+      'Click on your <strong>account name</strong> at the top right corner',
+      'Select <strong>Settings</strong> from the dropdown menu',
+      'Click on <strong>API</strong> in the left sidebar',
+      'You will see three values on this page: <strong>Account SID</strong> (e.g. wiom67), <strong>API Key</strong>, and <strong>API Token</strong>',
+      'Copy each value carefully — the API Token is sensitive, do not share it in chat or email',
+      'If you do not see an API Token, click <strong>Generate Token</strong> to create one'
+    ]
+  },
+  twilio: {
+    name: 'Twilio', currency: 'USD',
+    apiUrl: 'https://api.twilio.com/2010-04-01/Accounts/{TWILIO_ACCOUNT_SID}/Balance.json',
+    jsonPath: 'balance', authType: 'basic',
+    wfName: 'twilio-monitor',
+    creds: [
+      { id: 'sid',   label: 'Account SID',  envName: 'TWILIO_ACCOUNT_SID', placeholder: 'ACxxxxxxxx' },
+      { id: 'token', label: 'Auth Token',   envName: 'TWILIO_AUTH_TOKEN',  placeholder: 'Your Auth Token' },
+    ],
+    guide: '🔑 Find these at <strong>console.twilio.com</strong> on the homepage under Account Info.',
+    guideSteps: [
+      'Go to <a href="https://console.twilio.com" target="_blank"><strong>console.twilio.com</strong></a> and log in',
+      'On the <strong>homepage dashboard</strong>, look for the "Account Info" panel — it is usually on the right side',
+      'You will see <strong>Account SID</strong> (starts with AC) and <strong>Auth Token</strong> listed there',
+      'Click the <strong>eye icon</strong> next to Auth Token to reveal it',
+      'Copy both values — never share the Auth Token in chat or email'
+    ]
+  },
+  razorpay: {
+    name: 'Razorpay', currency: '₹',
+    apiUrl: 'https://api.razorpay.com/v1/balance',
+    jsonPath: 'balance', authType: 'basic',
+    wfName: 'razorpay-monitor',
+    creds: [
+      { id: 'key',    label: 'Key ID',     envName: 'RAZORPAY_KEY_ID',     placeholder: 'rzp_live_xxx' },
+      { id: 'secret', label: 'Key Secret', envName: 'RAZORPAY_KEY_SECRET', placeholder: 'Your Key Secret' },
+    ],
+    guide: '🔑 Find these at <strong>dashboard.razorpay.com → Settings → API Keys</strong>.',
+    guideSteps: [
+      'Go to <a href="https://dashboard.razorpay.com" target="_blank"><strong>dashboard.razorpay.com</strong></a> and log in',
+      'Click <strong>Settings</strong> in the left sidebar',
+      'Click <strong>API Keys</strong> tab at the top',
+      'If you already have keys, click <strong>Show Key Secret</strong> to reveal it. If not, click <strong>Generate Key</strong>',
+      'You will see <strong>Key ID</strong> (starts with rzp_live_ or rzp_test_) and <strong>Key Secret</strong>',
+      '⚠️ The Key Secret is shown only once when generated — save it somewhere safe immediately',
+      'Use Live keys for production monitoring, Test keys only for testing'
+    ]
+  },
+  sendgrid: {
+    name: 'SendGrid', currency: 'credits',
+    apiUrl: 'https://api.sendgrid.com/v3/user/credits',
+    jsonPath: 'remain', authType: 'bearer',
+    wfName: 'sendgrid-monitor',
+    creds: [
+      { id: 'key', label: 'API Key', envName: 'SENDGRID_API_KEY', placeholder: 'SG.xxxxxxxx' },
+    ],
+    guide: '🔑 Find this at <strong>app.sendgrid.com → Settings → API Keys</strong>. Create one if needed.',
+    guideSteps: [
+      'Go to <a href="https://app.sendgrid.com" target="_blank"><strong>app.sendgrid.com</strong></a> and log in',
+      'In the left sidebar, click <strong>Settings</strong>',
+      'Click <strong>API Keys</strong>',
+      'If you have an existing key, you cannot see it again — you will need to create a new one',
+      'Click <strong>Create API Key</strong> → give it a name like "Balance Monitor"',
+      'Set permission to <strong>Restricted Access</strong> → enable <strong>Billing → Read</strong>',
+      'Click <strong>Create & View</strong> — copy the key immediately, it is shown only once'
+    ]
+  },
+  aws: {
+    name: 'AWS Credits', currency: 'USD',
+    apiUrl: 'custom', jsonPath: 'credits', authType: 'aws',
+    wfName: 'aws-monitor',
+    creds: [
+      { id: 'key',    label: 'Access Key ID',     envName: 'AWS_ACCESS_KEY_ID',     placeholder: 'AKIAXXXXXXXX' },
+      { id: 'secret', label: 'Secret Access Key', envName: 'AWS_SECRET_ACCESS_KEY', placeholder: 'Your Secret Key' },
+    ],
+    guide: '🔑 Find these at <strong>AWS Console → IAM → Your User → Security Credentials → Access Keys</strong>.',
+    guideSteps: [
+      'Go to <a href="https://console.aws.amazon.com" target="_blank"><strong>console.aws.amazon.com</strong></a> and log in',
+      'Click your <strong>account name</strong> at the top right → select <strong>Security Credentials</strong>',
+      'Scroll down to <strong>Access Keys</strong> section',
+      'Click <strong>Create Access Key</strong> if you do not have one already',
+      'Select use case <strong>Application running outside AWS</strong> → click Next',
+      'You will see <strong>Access Key ID</strong> (starts with AKIA) and <strong>Secret Access Key</strong>',
+      '⚠️ Secret Access Key is shown only once — download the CSV or copy it immediately',
+      'Never share these keys — they give full API access to your AWS account'
+    ]
+  },
+  custom: {
+    name: 'Custom Service', currency: '',
+    apiUrl: '', jsonPath: 'balance', authType: 'basic',
+    wfName: 'custom-monitor',
+    creds: [
+      { id: 'key',   label: 'API Key / Username', envName: 'MY_API_KEY',   placeholder: 'Your API Key' },
+      { id: 'token', label: 'API Token / Password',envName: 'MY_API_TOKEN', placeholder: 'Your API Token' },
+    ],
+    guide: '🔧 Enter your service\'s API credentials below. Check your service dashboard under Settings or API section.',
+    guideSteps: [
+      'Log in to your service dashboard',
+      'Look for <strong>Settings</strong>, <strong>Developer</strong>, or <strong>API</strong> section',
+      'Find your <strong>API Key</strong> or credentials — they are usually under "API Keys" or "Integrations"',
+      'If you do not have credentials yet, look for a "Generate" or "Create Key" button',
+      'Copy both the Key and Token/Secret carefully',
+      'Also note your service\'s <strong>balance API URL</strong> — check their API documentation'
+    ]
+  }
+};
+
+let selectedService = null;
+let selectedFreqHours = 1;
+
+function selectService(key) {
+  selectedService = key;
+  document.querySelectorAll('.service-card').forEach(c => c.classList.remove('selected'));
+  event.currentTarget.classList.add('selected');
+}
+
+function setFreq(el, hours) {
+  selectedFreqHours = hours;
+  document.querySelectorAll('.freq-opt').forEach(f => f.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+function goToStep(n) {
+  [1,2,3].forEach(i => {
+    document.getElementById('step'+i).classList.toggle('active', i===n);
+    const tab = document.getElementById('stab'+i);
+    tab.classList.remove('active','done');
+    if (i === n) tab.classList.add('active');
+    if (i < n) tab.classList.add('done');
+  });
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+function nextStep(current) {
+  if (current === 1) {
+    if (!selectedService) { alert('Please select a service first!'); return; }
+    buildStep2();
+    goToStep(2);
+  } else if (current === 2) {
+    if (!validateStep2()) return;
+    buildOutput();
+    goToStep(3);
+  }
+}
+
+function toggleGuide(id) {
+  const steps = document.getElementById('guideSteps_' + id);
+  const link = document.getElementById('guideToggle_' + id);
+  const isOpen = steps.style.display !== 'none';
+  steps.style.display = isOpen ? 'none' : 'block';
+  link.innerHTML = isOpen
+    ? '📖 How do I find these? <span style="color:#ec4899">Click to expand ↓</span>'
+    : '📖 Hide instructions ↑';
+}
+
+function toggleApiExplainer() {
+  const box = document.getElementById('apiExplainer');
+  const isOpen = box.style.display !== 'none';
+  box.style.display = isOpen ? 'none' : 'block';
+}
+
+function buildStep2() {
+  const svc = SERVICES[selectedService];
+  const isCustom = selectedService === 'custom';
+
+  // ── Credential guide box ──
+  const credStepsHtml = svc.guideSteps.map((s,i) => `
+    <div style="display:flex;gap:10px;margin-bottom:10px;align-items:flex-start;">
+      <div style="min-width:22px;height:22px;background:#ec4899;color:white;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;margin-top:1px;">${i+1}</div>
+      <div style="font-size:13px;line-height:1.6;color:#374151;">${s}</div>
+    </div>`).join('');
+
+  document.getElementById('credGuide').innerHTML = `
+    <div style="font-size:13px;color:#166534;margin-bottom:10px;">${svc.guide}</div>
+    <a href="#" id="guideToggle_cred" onclick="event.preventDefault();toggleGuide('cred')"
+       style="font-size:12px;color:#ec4899;font-weight:600;text-decoration:none;">
+      📖 How do I find these? <span style="color:#ec4899">Click to expand ↓</span>
+    </a>
+    <div id="guideSteps_cred" style="display:none;margin-top:14px;padding:16px;background:#fff7f9;border:1px solid #fbcfe8;border-radius:10px;">
+      <div style="font-size:11px;font-weight:700;color:#ec4899;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:12px;">Step-by-step guide</div>
+      ${credStepsHtml}
+    </div>`;
+
+  // ── Credential input fields ──
+  const fields = document.getElementById('credFields');
+  fields.innerHTML = svc.creds.map(c => `
+    <div class="field">
+      <label>${c.label}</label>
+      <input type="password" id="cred_${c.id}" placeholder="${c.placeholder}" autocomplete="off" />
+      ${c.hint ? `<div class="field-hint">${c.hint}</div>` : ''}
+    </div>
+  `).join('');
+
+  // ── API URL section (always shown, but different for known vs custom) ──
+  const apiSection = document.getElementById('apiUrlSection');
+
+  if (isCustom) {
+    // Custom: full explanation + editable fields
+    apiSection.innerHTML = `
+      <div class="cred-section" style="margin-top:20px;">
+        <div class="cred-title">🌐 Balance API URL</div>
+
+        <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:14px 16px;margin-bottom:16px;font-size:13px;color:#92400e;line-height:1.7;">
+          <strong>What is a Balance API URL?</strong><br>
+          It's a web address your service provides so that tools (like this monitor) can automatically check your balance without logging in manually. Think of it like a special link that returns your balance as a number.<br><br>
+          <strong>Where do I find it?</strong> Go to your service's <strong>API Documentation</strong> or <strong>Developer Docs</strong> — search for "balance", "credits", or "account info" endpoint.
+          <a href="#" onclick="event.preventDefault();toggleApiExplainer()"
+             style="display:inline-block;margin-top:8px;color:#ec4899;font-weight:600;font-size:12px;text-decoration:none;">
+            📖 See an example of how this works ↓
+          </a>
+          <div id="apiExplainer" style="display:none;margin-top:12px;padding:12px;background:white;border-radius:8px;border:1px solid #fde68a;">
+            <div style="font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">Example — How Exotel does it</div>
+            <div style="font-size:12px;color:#374151;line-height:1.8;">
+              URL: <code style="background:#f3f4f6;padding:2px 6px;border-radius:4px;font-family:monospace;">https://api.exotel.com/v1/Accounts/wiom67/balance.json</code><br>
+              When the monitor hits this URL with your credentials, Exotel returns:<br>
+              <code style="background:#f3f4f6;padding:4px 8px;border-radius:4px;font-family:monospace;display:block;margin-top:6px;">{"Balance": {"AvailableBalance": 4625.00}}</code><br>
+              The monitor reads <code style="background:#f3f4f6;padding:2px 6px;border-radius:4px;font-family:monospace;">Balance.AvailableBalance</code> and compares it to your threshold.<br><br>
+              Your service will have a similar URL — check their API docs for a "Get Balance" or "Account Info" endpoint.
+            </div>
+          </div>
+        </div>
+
+        <div class="form-grid">
+          <div class="field full">
+            <label>Balance API URL</label>
+            <input type="text" id="cred_apiurl" placeholder="https://api.yourservice.com/v1/balance" />
+            <div class="field-hint">Copy this from your service's API documentation — look for "Get Balance" or "Account Credits" endpoint</div>
+          </div>
+          <div class="field">
+            <label>Currency / Unit</label>
+            <input type="text" id="cred_currency" placeholder="₹ or USD or credits" />
+            <div class="field-hint">How balance is displayed — e.g. ₹, USD, or "credits"</div>
+          </div>
+          <div class="field">
+            <label>Balance JSON Key</label>
+            <input type="text" id="cred_jsonpath" placeholder="balance or data.balance" value="balance" />
+            <div class="field-hint">The field name in the API response that contains the balance number. Check the API docs or test the URL in your browser.</div>
+          </div>
+        </div>
+      </div>`;
+  } else {
+    // Known service: show the URL we use, read-only, with explanation
+    const displayUrl = svc.apiUrl.replace('{EXOTEL_SID}', '[Your Account SID]')
+                                 .replace('{TWILIO_ACCOUNT_SID}', '[Your Account SID]');
+    apiSection.innerHTML = `
+      <div class="cred-section" style="margin-top:20px;">
+        <div class="cred-title">🌐 Balance API URL</div>
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 16px;margin-bottom:12px;font-size:13px;color:#166534;line-height:1.7;">
+          ✅ <strong>We already know the correct API URL for ${svc.name}.</strong> You don't need to find or enter this — it's automatically included in your generated script.<br><br>
+          <strong>URL we use:</strong><br>
+          <code style="background:white;border:1px solid #bbf7d0;padding:6px 10px;border-radius:6px;font-family:monospace;font-size:12px;display:block;margin-top:6px;word-break:break-all;">${displayUrl}</code>
+        </div>
+        <div style="font-size:12px;color:#8b8580;line-height:1.6;">
+          <strong>How does this work?</strong> When the monitor runs, it calls this URL with your credentials. ${svc.name} responds with your current balance as a number. If it's below your threshold, you get a Slack alert.
+          <br><br>
+          <strong>What if this URL doesn't work?</strong> Some accounts use a different region URL. If your monitor shows ₹0.00 even though you have balance, contact your ${svc.name} support to confirm your API endpoint.
+        </div>
+      </div>`;
+  }
+}
+
+function showFieldError(id, msg) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.borderColor = '#ef4444';
+  el.style.boxShadow = '0 0 0 3px rgba(239,68,68,0.1)';
+  // Remove existing error if any
+  const existing = el.parentNode.querySelector('.field-error');
+  if (existing) existing.remove();
+  const err = document.createElement('div');
+  err.className = 'field-error';
+  err.style.cssText = 'font-size:11px;color:#ef4444;margin-top:5px;font-weight:500;display:flex;align-items:center;gap:4px;';
+  err.innerHTML = `⚠️ ${msg}`;
+  el.parentNode.appendChild(err);
+}
+
+function clearFieldError(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.borderColor = '';
+  el.style.boxShadow = '';
+  const existing = el.parentNode.querySelector('.field-error');
+  if (existing) existing.remove();
+}
+
+function clearAllErrors() {
+  document.querySelectorAll('.field-error').forEach(e => e.remove());
+  document.querySelectorAll('input, select').forEach(el => {
+    el.style.borderColor = '';
+    el.style.boxShadow = '';
+  });
+}
+
+// Clear error on input
+document.addEventListener('input', e => {
+  if (e.target.matches('input, select')) clearFieldError(e.target.id);
+});
+
+function validateStep2() {
+  clearAllErrors();
+  const svc = SERVICES[selectedService];
+  const isCustom = selectedService === 'custom';
+  let valid = true;
+
+  // Credential fields
+  for (const c of svc.creds) {
+    const val = document.getElementById('cred_'+c.id)?.value.trim();
+    if (!val) {
+      showFieldError('cred_'+c.id, `${c.label} is required`);
+      valid = false;
+    }
+  }
+
+  // Custom extra fields
+  if (isCustom) {
+    if (!document.getElementById('cred_apiurl')?.value.trim()) {
+      showFieldError('cred_apiurl', 'Balance API URL is required — check your service API docs');
+      valid = false;
+    }
+    if (!document.getElementById('cred_currency')?.value.trim()) {
+      showFieldError('cred_currency', 'Currency or unit is required (e.g. ₹, USD, credits)');
+      valid = false;
+    }
+  }
+
+  // Threshold
+  if (!document.getElementById('threshold').value) {
+    showFieldError('threshold', 'Alert threshold is required');
+    valid = false;
+  }
+
+  // Recharge amount
+  if (!document.getElementById('rechargeAmt').value) {
+    showFieldError('rechargeAmt', 'Recharge amount is required');
+    valid = false;
+  }
+
+  // Slack webhook
+  const webhook = document.getElementById('slackWebhook').value.trim();
+  if (!webhook) {
+    showFieldError('slackWebhook', 'Slack webhook URL is required');
+    valid = false;
+  } else if (!webhook.startsWith('https://hooks.slack.com')) {
+    showFieldError('slackWebhook', 'Must start with https://hooks.slack.com — check your Slack app settings');
+    valid = false;
+  }
+
+  // Scroll to first error
+  if (!valid) {
+    const firstError = document.querySelector('.field-error');
+    if (firstError) firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  return valid;
+}
+
+function hoursToCron(h) {
+  if (h === 1) return '0 * * * *';
+  if (h === 24) return '0 9 * * *';
+  return `0 */${h} * * *`;
+}
+
+function buildOutput() {
+  const svc = SERVICES[selectedService];
+  const threshold = document.getElementById('threshold').value;
+  const recharge = document.getElementById('rechargeAmt').value;
+  const webhook = document.getElementById('slackWebhook').value.trim();
+  const cron = hoursToCron(selectedFreqHours);
+  const currency = selectedService === 'custom'
+    ? (document.getElementById('cred_currency')?.value || '')
+    : svc.currency;
+  const apiUrl = selectedService === 'custom'
+    ? (document.getElementById('cred_apiurl')?.value || 'https://api.yourservice.com/balance')
+    : svc.apiUrl;
+  const customJsonPath = selectedService === 'custom'
+    ? (document.getElementById('cred_jsonpath')?.value || 'balance')
+    : svc.jsonPath;
+  const jsonPath = customJsonPath;
+
+  // Build env var lines
+  const envLines = svc.creds.map(c => `${c.envName} = _require("${c.envName}")`).join('\n');
+  const authImport = svc.authType === 'basic' ? 'from dotenv import load_dotenv\nfrom requests.auth import HTTPBasicAuth' : 'from dotenv import load_dotenv';
+
+  let requestCode = '';
+  if (svc.authType === 'basic') {
+    const k = svc.creds[0].envName;
+    const t = svc.creds[1]?.envName || '';
+    requestCode = `resp = requests.get(API_URL, auth=HTTPBasicAuth(${k}, ${t}), timeout=15)`;
+  } else if (svc.authType === 'bearer') {
+    const k = svc.creds[0].envName;
+    requestCode = `resp = requests.get(API_URL, headers={"Authorization": f"Bearer {${k}}"}, timeout=15)`;
+  } else {
+    requestCode = `resp = requests.get(API_URL, timeout=15)`;
+  }
+
+  const pathParts = jsonPath.split('.');
+  const pathCode = pathParts.length === 1
+    ? `data.get('${pathParts[0]}', 0)`
+    : `data.get('${pathParts[0]}', {}).get('${pathParts[1]}', 0)`;
+
+  const pyScript =
+`#!/usr/bin/env python3
+"""${svc.name} Balance Monitor — generated by Low Balance Alert Agent"""
+import os, sys, requests
+${authImport}
+
+# Load credentials from centralised .env (never hardcode secrets)
+load_dotenv(r'C:\\credentials\\.env')
+
+def _require(key):
+    val = os.getenv(key)
+    if not val:
+        raise EnvironmentError(f"Missing '{key}' in C:\\\\credentials\\\\.env — please add it.")
+    return val
+
+API_URL   = "${apiUrl}"
+${envLines}
+SLACK_URL  = _require("SLACK_WEBHOOK_URL")
+THRESHOLD  = float(os.getenv("BALANCE_THRESHOLD", "${threshold}"))
+RECHARGE   = "${recharge}"
+
+def get_balance():
+    ${requestCode}
+    resp.raise_for_status()
+    data = resp.json()
+    return float(${pathCode})
+
+def send_alert(balance):
+    requests.post(SLACK_URL, json={"blocks": [
+        {"type": "header", "text": {"type": "plain_text",
+            "text": "⚠️ ${svc.name} — Low Balance Alert!"}},
+        {"type": "section", "fields": [
+            {"type": "mrkdwn", "text": f"*Current Balance:*\\n${currency}{'{balance:.2f}'}"},
+            {"type": "mrkdwn", "text": f"*Alert Threshold:*\\n${currency}${threshold}"}
+        ]},
+        {"type": "section", "fields": [
+            {"type": "mrkdwn", "text": f"*Suggested Recharge:*\\n${currency}{RECHARGE}"},
+            {"type": "mrkdwn", "text": f"*Checks every:*\\n${selectedFreqHours} hour(s)"}
+        ]},
+        {"type": "section", "text": {"type": "mrkdwn",
+            "text": ":rotating_light: Please recharge immediately to avoid service disruption."}}
+    ]}, timeout=10).raise_for_status()
+    print(f"✅ Alert sent! Balance: ${currency}{'{balance:.2f}'}")
+
+def main():
+    balance = get_balance()
+    print(f"Balance: ${currency}{'{balance:.2f}'} | Threshold: ${currency}${threshold}")
+    if balance < THRESHOLD:
+        send_alert(balance)
+        sys.exit(1)
+    print("✅ Balance is healthy.")
+
+if __name__ == "__main__":
+    main()`;
+
+  // YAML
+  let secretLines = svc.creds.map(c => `          ${c.envName}: \${{ secrets.${c.envName} }}`).join('\n');
+  secretLines += `\n          SLACK_WEBHOOK_URL: \${{ secrets.SLACK_WEBHOOK_URL }}`;
+  secretLines += `\n          BALANCE_THRESHOLD: "${threshold}"`;
+
+  const yamlScript =
+`name: ${svc.name} Balance Monitor
+
+on:
+  schedule:
+    - cron: '${cron}'   # Every ${selectedFreqHours} hour(s)
+  workflow_dispatch:
+
+jobs:
+  check-balance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install requests==2.32.3 python-dotenv==1.0.1
+      - name: Check ${svc.name} Balance
+        env:
+${secretLines}
+        run: python check_balance.py`;
+
+  document.getElementById('pyOut').textContent = pyScript;
+  document.getElementById('ymlOut').textContent = yamlScript;
+
+  // Summary
+  document.getElementById('summaryGrid').innerHTML = `
+    <div class="summary-item"><div class="si-label">Service</div><div class="si-value">${svc.name}</div></div>
+    <div class="summary-item"><div class="si-label">Alert Threshold</div><div class="si-value">${currency}${threshold}</div></div>
+    <div class="summary-item"><div class="si-label">Suggested Recharge</div><div class="si-value">${currency}${recharge}</div></div>
+    <div class="summary-item"><div class="si-label">Check Every</div><div class="si-value">${selectedFreqHours} hour(s)</div></div>
+  `;
+
+  // Deploy steps
+  const secrets = svc.creds.map(c => `<code>${c.envName}</code>`).join(', ') + ', <code>SLACK_WEBHOOK_URL</code>';
+  document.getElementById('deploySteps').innerHTML = `
+    <div class="ds"><div class="ds-num">1</div><div class="ds-text">Create a <strong>private GitHub repo</strong> (e.g. <code>${svc.wfName}</code>) at github.com/new</div></div>
+    <div class="ds"><div class="ds-num">2</div><div class="ds-text">Create a <code>.gitignore</code> with <code>.env</code> and <code>.env.*</code> to prevent accidental credential exposure</div></div>
+    <div class="ds"><div class="ds-num">3</div><div class="ds-text">Upload <code>check_balance.py</code> to the root of the repo</div></div>
+    <div class="ds"><div class="ds-num">4</div><div class="ds-text">Create <code>.github/workflows/${svc.wfName}.yml</code> and paste the workflow YAML</div></div>
+    <div class="ds"><div class="ds-num">5</div><div class="ds-text">Go to <strong>Settings → Secrets → Actions</strong> and add: ${secrets} — values from your ${svc.name} dashboard</div></div>
+    <div class="ds"><div class="ds-num">6</div><div class="ds-text">Run <code>git status</code> before committing — make sure no <code>.env</code> files are staged</div></div>
+    <div class="ds"><div class="ds-num">7</div><div class="ds-text">Go to <strong>Actions → Run workflow</strong> to test. Check your Slack! 🎉</div></div>
+  `;
+}
+
+function switchTab(el, tabId) {
+  el.closest('.output-card').querySelectorAll('.otab').forEach(t => t.classList.remove('active'));
+  el.closest('.output-card').querySelectorAll('.otab-content').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById(tabId).classList.add('active');
+}
+
+function copyBlock(id, btn) {
+  navigator.clipboard.writeText(document.getElementById(id).textContent).then(() => {
+    btn.textContent = '✓ Copied!'; btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Copy file'; btn.classList.remove('copied'); }, 2000);
+  });
+}
+</script>
+</body>
+</html>
